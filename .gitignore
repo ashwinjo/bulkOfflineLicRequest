@@ -4,3 +4,4 @@ __pycache__/
 out/
 *.zip
 crews.txt
+webapp/work/

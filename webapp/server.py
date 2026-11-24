@@ -20,8 +20,6 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from email.parser import BytesParser
-from email.policy import default
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -36,7 +34,6 @@ import bulk_offline_lic as lic  # noqa: E402
 STATIC = Path(__file__).resolve().parent
 WORK = STATIC / "work"
 MAX_BODY = 32 * 1024 * 1024
-MAX_FILES = 400
 MAX_CONCURRENCY = 64
 STATIC_SUFFIXES = {".html", ".css", ".js", ".woff2", ".txt"}
 JOB_ID = re.compile(r"^[0-9a-f]{32}$")
@@ -172,6 +169,24 @@ def download_requests(
     return _scrub(Outcome(outcome.exit_code, outcome.report, rows, problems, archive), passwords)
 
 
+def license_path(value: object) -> Path:
+    """The folder or license file on this machine, the same path the command line takes."""
+    if not isinstance(value, str):
+        raise ValueError("Give the absolute path of the license folder.")
+    text = value.strip()
+    if not text:
+        raise ValueError("Give the absolute path of the license folder.")
+    candidate = Path(text).expanduser()
+    if not candidate.is_absolute():
+        raise ValueError("The license folder must be an absolute path.")
+    resolved = candidate.resolve()
+    if not resolved.exists():
+        raise ValueError("That path is not on this machine.")
+    if not resolved.is_dir() and not resolved.is_file():
+        raise ValueError("That path is not a folder or a license file.")
+    return resolved
+
+
 def install_folder(
     crews: str,
     concurrency: int,
@@ -180,7 +195,7 @@ def install_folder(
     transport: object | None = None,
     retry_delay: float = 0.5,
 ) -> Outcome:
-    root = find_license_root(folder)
+    root = folder if folder.is_file() else find_license_root(folder)
     expanded = lic._license_paths([root])
     if isinstance(expanded, str):
         return Outcome(2, expanded, [], [])
@@ -255,45 +270,6 @@ def final_status(rows: list[dict], problems: list[str]) -> str:
     if succeeded:
         return "Partial Success"
     return "Failed"
-
-
-def save_tree(root: Path, files: list[tuple[str, bytes]]) -> None:
-    if not files:
-        raise ValueError("Choose a license folder before installing.")
-    if len(files) > MAX_FILES:
-        raise ValueError(f"That folder has more than {MAX_FILES} files.")
-    root.mkdir(parents=True, exist_ok=True)
-    base = root.resolve()
-    for name, data in files:
-        relative = safe_relative(name)
-        if relative is None:
-            raise ValueError("A file in that folder has a path this page will not write.")
-        dest = root.joinpath(relative)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        if not dest.resolve().is_relative_to(base):
-            raise ValueError("A file in that folder has a path this page will not write.")
-        dest.write_bytes(data)
-
-
-def parse_multipart(content_type: str, body: bytes) -> tuple[dict[str, str], list[tuple[str, bytes]]]:
-    raw = b"Content-Type: " + content_type.encode("utf-8") + b"\r\nMIME-Version: 1.0\r\n\r\n" + body
-    message = BytesParser(policy=default).parsebytes(raw)
-    if not message.is_multipart():
-        raise ValueError("The license folder was not sent as a folder upload.")
-    fields: dict[str, str] = {}
-    files: list[tuple[str, bytes]] = []
-    for part in message.iter_parts():
-        payload = part.get_payload(decode=True)
-        if payload is None:
-            payload = b""
-        filename = part.get_filename()
-        if filename:
-            files.append((filename, payload))
-            continue
-        name = part.get_param("name", header="content-disposition")
-        if name:
-            fields[str(name)] = payload.decode("utf-8", "replace")
-    return fields, files
 
 
 def payload_of(outcome: Outcome, job_id: str | None = None) -> dict:
@@ -404,14 +380,11 @@ class Service:
         )
         return job_id, outcome
 
-    def install(self, crews: str, concurrency: int, files: list[tuple[str, bytes]]) -> Outcome:
-        job_id = uuid.uuid4().hex
-        dest = self.work / job_id / "licenses"
-        save_tree(dest, files)
+    def install(self, crews: str, concurrency: int, folder: Path) -> Outcome:
         return install_folder(
             crews,
             concurrency,
-            dest,
+            folder,
             transport=self.transport,
             retry_delay=self.retry_delay,
         )
@@ -522,8 +495,8 @@ def handler_for(service: Service):
                     )
                     return
                 if parsed.path == "/api/install":
-                    crews, concurrency, files = self._install_fields(body)
-                    outcome = service.install(crews, concurrency, files)
+                    crews, concurrency, folder = self._install_fields(body)
+                    outcome = service.install(crews, concurrency, folder)
                     self._respond(
                         outcome,
                         job_id=None,
@@ -562,12 +535,22 @@ def handler_for(service: Service):
             crews = fields.get("crews", [""])[0]
             return crews, parse_concurrency(fields.get("concurrency", [""])[0])
 
-        def _install_fields(self, body: bytes) -> tuple[str, int, list[tuple[str, bytes]]]:
-            content_type = self.headers.get("Content-Type", "")
-            if "multipart/form-data" not in content_type.lower():
-                raise ValueError("Choose a license folder before installing.")
-            fields, files = parse_multipart(content_type, body)
-            return fields.get("crews", ""), parse_concurrency(fields.get("concurrency", "")), files
+        def _install_fields(self, body: bytes) -> tuple[str, int, Path]:
+            content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+            if content_type == "application/json":
+                try:
+                    payload = json.loads(body.decode("utf-8"))
+                except (UnicodeError, json.JSONDecodeError) as exc:
+                    raise ValueError("The request was not readable JSON.") from exc
+                if not isinstance(payload, dict):
+                    raise ValueError("The request was not readable JSON.")
+                crews = payload.get("crews", "")
+                if not isinstance(crews, str):
+                    raise ValueError("The chassis list was not text.")
+                return crews, parse_concurrency(payload.get("concurrency")), license_path(payload.get("license"))
+            fields = parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True)
+            crews = fields.get("crews", [""])[0]
+            return crews, parse_concurrency(fields.get("concurrency", [""])[0]), license_path(fields.get("license", [""])[0])
 
     return Handler
 

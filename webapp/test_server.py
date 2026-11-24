@@ -14,9 +14,9 @@ from test_bulk_offline_lic import HOST_A, ChassisAPI, InstallAPI, REQUEST_BIN
 from webapp.server import (
     Service,
     download_requests,
+    license_path,
     parse_concurrency,
     safe_relative,
-    save_tree,
     serve,
 )
 
@@ -124,31 +124,22 @@ def test_http_download_saves_a_zip_without_echoing_the_password(tmp_path: Path):
         server.shutdown()
 
 
-def test_http_install_from_an_address_folder(tmp_path: Path):
+def test_http_install_reads_an_absolute_folder(tmp_path: Path):
     server = _start(tmp_path, InstallAPI())
+    folder = tmp_path / "licenses" / "10.1.1.1"
+    folder.mkdir(parents=True)
     license_bytes = base64.b64encode(json.dumps({"hostInfo": {"hostID": HOST_A}}).encode())
-    relative = f"licenses/10.1.1.1/{LICENSE_NAME}"
-    boundary = "----webapp"
-    body = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="crews"\r\n\r\n'
-        f"10.1.1.1,admin,{PASSWORD}\r\n"
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="concurrency"\r\n\r\n'
-        f"2\r\n"
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="files"; filename="{relative}"\r\n'
-        f"Content-Type: application/octet-stream\r\n\r\n"
-    ).encode() + license_bytes + f"\r\n--{boundary}--\r\n".encode()
+    (folder / LICENSE_NAME).write_bytes(license_bytes)
+    payload = json.dumps({
+        "crews": f"10.1.1.1,admin,{PASSWORD}",
+        "license": str(tmp_path / "licenses"),
+    }).encode()
     try:
         status, _headers, raw = _request(
             server,
             "/api/install",
-            data=body,
-            headers={
-                "Content-Type": f"multipart/form-data; boundary={boundary}",
-                "Accept": "application/json",
-            },
+            data=payload,
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
         )
         assert status == 200, raw
         assert PASSWORD.encode() not in raw
@@ -157,16 +148,15 @@ def test_http_install_from_an_address_folder(tmp_path: Path):
         assert report["results"][0]["address"] == "10.1.1.1"
         assert report["results"][0]["file"] == LICENSE_NAME
         assert report["results"][0]["ok"] is True
+        assert (folder / LICENSE_NAME).is_file()
     finally:
         server.shutdown()
 
 
-def test_upload_rejects_a_path_that_leaves_the_job_folder(tmp_path: Path):
-    root = tmp_path / "licenses"
+def test_license_path_rejects_a_relative_path():
     try:
-        save_tree(root, [("../outside.bin", b"nope")])
-    except ValueError:
-        pass
+        license_path("licenses")
+    except ValueError as exc:
+        assert "absolute" in str(exc)
     else:
         raise AssertionError("expected a rejection")
-    assert not (tmp_path / "outside.bin").exists()

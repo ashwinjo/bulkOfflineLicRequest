@@ -41,7 +41,19 @@
           </div>
         </form>
         <div class="panel ledger" id="download-ledger" data-state="empty">
-          <p class="ledger__status" role="status">No chassis have been contacted.</p>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">IP</th>
+                <th scope="col">offline req file name</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="2"><p class="ledger__status" role="status">No chassis have been contacted.</p></td>
+              </tr>
+            </tbody>
+          </table>
           <p class="help">The zip of successful requests is listed here, one row per chassis.</p>
         </div>
       </div>
@@ -49,7 +61,7 @@
 
     <section class="job" id="install">
       <div class="panels">
-        <form id="install-form" class="panel" action="/api/install" method="post" enctype="multipart/form-data" autocomplete="off">
+        <form id="install-form" class="panel" action="/api/install" method="post" autocomplete="off">
           <div class="field-block">
             <label class="label" for="install-crews">Chassis list</label>
             <textarea class="field" id="install-crews" name="crews" required aria-required="true" aria-describedby="install-crews-help" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="10.0.0.1,admin,password"></textarea>
@@ -57,8 +69,8 @@
           </div>
           <div class="field-block">
             <label class="label" for="license-folder">License folder</label>
-            <input class="field" id="license-folder" name="files" type="file" webkitdirectory directory multiple required aria-describedby="folder-help">
-            <p class="help" id="folder-help" data-rest="Choose the folder whose subfolders are chassis addresses.">Choose the folder whose subfolders are chassis addresses.</p>
+            <input class="field" id="license-folder" name="license" type="text" required aria-required="true" aria-describedby="folder-help" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="/path/to/licenses">
+            <p class="help" id="folder-help" data-rest="Absolute path on this machine. Subfolders are chassis addresses. The page reads that folder. It does not upload it.">Absolute path on this machine. Subfolders are chassis addresses. The page reads that folder. It does not upload it.</p>
           </div>
           <div class="actions">
             <button class="btn btn--quiet" id="copy-list" type="button">Use the download list</button>
@@ -66,7 +78,19 @@
           </div>
         </form>
         <div class="panel ledger" id="install-ledger" data-state="empty">
-          <p class="ledger__status" role="status">No license folder has been sent.</p>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">IP</th>
+                <th scope="col">license filename</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="2"><p class="ledger__status" role="status">No license folder has been read.</p></td>
+              </tr>
+            </tbody>
+          </table>
           <p class="help">Each received license is listed here after the chassis answers.</p>
         </div>
       </div>
@@ -105,6 +129,6 @@ python bulk_offline_lic.py install --license /path/to/licenses --input crews.txt
     </section>
   </main>
   <iframe class="saver" id="saver" name="saver" title="Zip download" tabindex="-1" aria-hidden="true"></iframe>
-  <script src="app.js"></script>
+  <script src="/app.js"></script>
 </body>
 </html>

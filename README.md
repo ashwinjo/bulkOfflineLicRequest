@@ -37,6 +37,25 @@ Each chassis is one line: `ip,username,password`.
 
 The machine running the script must be able to reach each chassis on HTTPS.
 
+## Web page
+
+The command line stays as it is. A local page in `webapp/` calls the same code. It does not use the internet: the typefaces, the script, and the styles are files in that folder, and the server binds to this machine only.
+
+```bash
+source .venv/bin/activate
+python webapp/server.py
+```
+
+Open `http://127.0.0.1:8765/`. Paste a `crews.txt` list and choose Download Offline License Request. The browser saves the zip of successful requests. Install offline licenses takes the same kind of list, plus the absolute path of the folder whose subfolders are chassis addresses. The page reads that folder on this machine. It does not upload the files. The page also has How to run, with these same commands.
+
+Passwords are sent to the chassis and are not written into `crews.txt` or into the page afterwards. `--host` defaults to `127.0.0.1`. `--port` defaults to `8765`.
+
+To self-host, run the server on a machine that can reach the chassis. Pass `--host` with an address other machines can reach only when you mean to share the page, because passwords are typed into it:
+
+```bash
+python webapp/server.py --host 0.0.0.0 --port 8765
+```
+
 ## Run
 
 ```bash

@@ -175,18 +175,13 @@
       return {
         method: "POST",
         headers: { "Accept": "application/json" },
-        body: new FormData(form)
+        headers: { "Accept": "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          crews: form.elements.crews.value,
+          license: form.elements.license.value
+        })
       };
     }
-  });
-
-  const folder = document.getElementById("license-folder");
-  folder.addEventListener("change", function () {
-    const help = restHelp("folder-help");
-    const files = folder.files;
-    if (!help || !files || !files.length) return;
-    const top = (files[0].webkitRelativePath || files[0].name).split("/")[0];
-    help.textContent = files.length === 1 ? top + ", 1 file." : top + ", " + files.length + " files.";
   });
 
   document.getElementById("copy-list").addEventListener("click", function () {
