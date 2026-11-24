@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chassis requests</title>
+  <meta name="description" content="Download offline license requests from a chassis list, then install the licenses that come back.">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="bar">
+    <div class="container bar__inner">
+      <a class="wordmark" href="#download">Bulk Offline License Manager</a>
+      <nav class="jobs" aria-label="Jobs">
+        <a href="#download">Download Offline License Request</a>
+        <a href="#install">Install offline licenses</a>
+        <a href="#run">How to run</a>
+      </nav>
+    </div>
+  </header>
+  <main class="container main">
+    <h1>Chassis requests</h1>
+    <p class="lead">Download a zip of offline requests, or install the license folder that comes back.</p>
+    <p class="note">This page stays on this machine. It calls each chassis directly, with certificate checks off, and it does not use a proxy.</p>
+
+    <section class="job" id="download">
+      <div class="panels">
+        <form id="download-form" class="panel" action="/api/download" method="post" autocomplete="off">
+          <div class="field-block">
+            <label class="label" for="download-crews">Chassis list</label>
+            <textarea class="field" id="download-crews" name="crews" required aria-required="true" aria-describedby="download-crews-help" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="10.0.0.1,admin,password"></textarea>
+            <p class="help" id="download-crews-help" data-rest="One line each: ip, username, password. The password is the rest of the line, so it may contain commas.">One line each: ip, username, password. The password is the rest of the line, so it may contain commas.</p>
+          </div>
+          <div class="actions">
+            <div class="field-block">
+              <label class="label" for="download-concurrency">Chassis at once</label>
+              <input class="field field--short" id="download-concurrency" name="concurrency" type="number" inputmode="numeric" min="1" max="64" value="8" required aria-describedby="download-concurrency-help">
+              <p class="help" id="download-concurrency-help">From 1 to 64.</p>
+            </div>
+            <button class="btn btn--primary" type="submit">Download Offline License Request</button>
+          </div>
+        </form>
+        <div class="panel ledger" id="download-ledger" data-state="empty">
+          <p class="ledger__status" role="status">No chassis have been contacted.</p>
+          <p class="help">The zip of successful requests is listed here, one row per chassis.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="job" id="install">
+      <div class="panels">
+        <form id="install-form" class="panel" action="/api/install" method="post" enctype="multipart/form-data" autocomplete="off">
+          <div class="field-block">
+            <label class="label" for="install-crews">Chassis list</label>
+            <textarea class="field" id="install-crews" name="crews" required aria-required="true" aria-describedby="install-crews-help" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="10.0.0.1,admin,password"></textarea>
+            <p class="help" id="install-crews-help" data-rest="Same shape as the download list. Each address folder must be a row here.">Same shape as the download list. Each address folder must be a row here.</p>
+          </div>
+          <div class="field-block">
+            <label class="label" for="license-folder">License folder</label>
+            <input class="field" id="license-folder" name="files" type="file" webkitdirectory directory multiple required aria-describedby="folder-help">
+            <p class="help" id="folder-help" data-rest="Choose the folder whose subfolders are chassis addresses.">Choose the folder whose subfolders are chassis addresses.</p>
+          </div>
+          <div class="actions">
+            <button class="btn btn--quiet" id="copy-list" type="button">Use the download list</button>
+            <button class="btn btn--primary" type="submit">Install offline licenses</button>
+          </div>
+        </form>
+        <div class="panel ledger" id="install-ledger" data-state="empty">
+          <p class="ledger__status" role="status">No license folder has been sent.</p>
+          <p class="help">Each received license is listed here after the chassis answers.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="job run" id="run">
+      <div class="run__block">
+        <h2>Start the page</h2>
+        <p>From this project folder, with Python 3.11 or newer. The first three lines are needed once.</p>
+        <pre class="command command--run">python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python webapp/server.py</pre>
+        <p class="help">Open 127.0.0.1 on port 8765. The server prints that address when it starts.</p>
+      </div>
+      <div class="run__block">
+        <h2>Self-host</h2>
+        <p>Run the server on a machine that can reach the chassis. It binds to 127.0.0.1 and port 8765, so only that machine can open the page. Fonts, the script, and the styles are files in webapp/. Chassis calls do not use a proxy, and certificate checks stay off.</p>
+        <p>To let another machine on your network open it, pass a bind address. Passwords are typed into this page, so keep the default unless you mean to share it.</p>
+        <pre class="command command--run">python webapp/server.py --host 0.0.0.0 --port 8765</pre>
+      </div>
+      <div class="run__block">
+        <h2>crews.txt</h2>
+        <p>One chassis on each line: ip, username, password. Copy crews.example.txt and edit it. The file holds passwords and is not committed.</p>
+        <pre class="command">&lt;ip&gt;,&lt;username&gt;,&lt;password&gt;
+10.0.0.1,admin,changeme
+10.0.0.2,admin,hash#1,extra</pre>
+        <p class="help">The password is everything after the second comma, so it may contain commas. A first line whose first field is ip or &lt;ip&gt; is a header and is skipped, as are blank lines and lines that start with #. An address may be a hostname or an IPv4 address, with an optional port such as 10.0.0.1:8443. A repeated address keeps the first line.</p>
+      </div>
+      <div class="run__block">
+        <h2>The command line</h2>
+        <p>The same work, without this page. --input reads crews.txt unless you pass another file.</p>
+        <pre class="command command--run">python bulk_offline_lic.py --input crews.txt --output out
+python bulk_offline_lic.py install --license /path/to/licenses --input crews.txt</pre>
+      </div>
+    </section>
+  </main>
+  <iframe class="saver" id="saver" name="saver" title="Zip download" tabindex="-1" aria-hidden="true"></iframe>
+  <script src="app.js"></script>
+</body>
+</html>
